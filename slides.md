@@ -1,6 +1,8 @@
 ---
 # try also 'default' to start simple
 theme: unicorn
+#colorSchema: 'light'
+
 # random image from a curated Unsplash collection by Anthony
 # like them? see https://unsplash.com/collections/94734566/slidev
 # apply any windi css classes to the current slide
@@ -14,6 +16,9 @@ drawings:
   persist: false
 # use UnoCSS
 css: unocss
+website: 'ligai.cn'
+handle: '孙运天'
+gradientColors: ['#A21CAF', '#5B21B6']
 ---
 
 # 2022 年 10 月 技术分享
@@ -23,7 +28,7 @@ css: unocss
 # 目录
 
 - 工程化 - 编写同时兼容 Vue2 与 Vue3 的代码
-- 编码技巧 - 利用 **代数数据结构** 精简代码
+- 编码技巧 - 利用 **代数数据类型** 精简代码
 - 业务实践 - 利用 **RxJS** 简化 WebSocket 的使用
 
 ---
@@ -63,12 +68,12 @@ layout: full
 
 ### 运行阶段
 
-负责根据使用的项目环境，re-export Vue2 或 Vue3 的 API
+负责根据使用的项目环境，自动选择使用 Vue2 或 Vue3 的 API
 
 转换 createElement 函数的参数，使得 Vue2 与 Vue3 的参数格式一致
 
 > - 使用的时候我们只需要从 Vue-Demi 里面 import 需要使用的 Api，就会自动根据环境进行切换
-> - 分为在浏览器中运行（IIFE） 和使用了打包工具（cjs、umd、esm）的两种情况
+> - 分为 在浏览器中运行（IIFE） 和 使用打包工具（cjs、umd、esm）的两种情况
 
 > - Vue2 和 Vue3 Composition Api 的区别非常小
 > - Vue2 和 Vue3 运行时 Api 最大的区别就在于 createElement 函数的参数格式不一致，Vue3 已经换成了 React JSX 的格式
@@ -230,7 +235,7 @@ export const h = (
     const props = defaults(propOut, options.props || {}); 
     if ((type as Record<string, any>).props) {
       // 这里省略了一些过滤 attrs 和 props 的逻辑，不是很重要
-      return hDemi(type, { ...options, props });
+      return hDemi(type, { ...options, props }, children);
     }
     return hDemi(type, { ...options, props }, children);
   }
@@ -293,19 +298,16 @@ const adaptScopedSlotsV3 = (scopedSlots: any) => {
 
 ---
 
-# 利用 **代数数据结构** 精简代码
+# 利用 **代数数据类型** 精简代码
 
 ---
 layout: full
 ---
 
 ## 说在前面
-- 我认为衡量一段代码复杂度的标准就是看状态机内状态的数量
+- 我认为衡量一段代码复杂度的标准就是看状态的数量
 - 状态越少，代码越简单。状态数量越多，代码越复杂，越容易出错
-- 状态指的是可以由**代码边界内**的行为**更改**的数据
-  - 首先明确一点，**代码边界**是一个相对的概念，在讨论不同组件或者项目、代码块的时候他的**代码边界**是不一样的
-  - 举例来说，接口的返回数据对于我们前端来说，它不能由我们前端修改，所以它不是状态。但是如果把视角放在我们整个系统来说，它就是一个状态了
-  - 详情弹框的显示状态（编辑、新增），对于详情弹框内部来说，它是一个输入的数据，是不能修改的，所以他不是一个状态。但是对于前端项目来说，它是一个状态，因为我们可以通过点击按钮来修改它的值。
+
 - 在 Vue 组件内部
   - 可以简单的认为 data 里面的变量就是状态，props、计算属性都**不是状态**
   - Composition Api 中 ref 和 reactive 是状态，而 computed 都**不是状态**
@@ -324,7 +326,7 @@ layout: full
 #
 #### 一些常见的数据类型的状态大小
 
-- unit: 1，在前端里面可以是 null、undefined
+- unit: 1，在前端里面可以是 null、undefined，所有的常量、非状态，它的大小也是 1
 - Boolean: 2
 - Number 和 String，这种可以有很多甚至是无限多个值的类型，要怎么计算他们的状态大小呢？
   - 首选我们明确一点，我们只关心状态在业务逻辑中的意义，而不是他的具体值，只区分可以影响到业务逻辑的状态值就行
@@ -374,7 +376,7 @@ Type Velocity = {
 layout: full
 ---
 
-# 例子 评论编辑器的展示控制
+# 例子 评论编辑器的显示控制
 
 > - 每个评论都有 2 个编辑器，一个用来回复评论，一个用来编辑评论。
 > - 并且同一时间最多只允许一个活动的编辑器。
@@ -382,9 +384,14 @@ layout: full
 
 <div class="grid gap-x-4 mt-8 grid-cols-2">
 
-![编辑](/assets/%E8%AF%84%E8%AE%BA-%E5%9B%9E%E5%A4%8D.png)
+回复评论
 
-![回复](/assets/%E8%AF%84%E8%AE%BA-%E7%BC%96%E8%BE%91.png)
+编辑评论
+
+![回复](/assets/%E8%AF%84%E8%AE%BA-%E5%9B%9E%E5%A4%8D.png)
+
+
+![编辑](/assets/%E8%AF%84%E8%AE%BA-%E7%BC%96%E8%BE%91.png)
 
 </div>
 
@@ -396,12 +403,12 @@ layout: full
 
 - 为回复组件定义两个变量 IsShowReply 和 IsShowEdit，然后通过 v-if 来控制是不是显示编辑器
 - 当点击按钮的时候，以点回复为例
-  1. 判断自己的 IsShowReply 是否为 true，如果是就直接返回不做处理
-  2. 判断自己的 IsShowEdit， 如果是 true 则修改为 false
-  3. 依次设置所有其他评论组件的 IsShowReply 和 IsShowEdit 为 false
+  - 1. 判断自己的 IsShowReply 是否为 true，如果是就直接返回不做处理
+  - 2. 判断自己的 IsShowEdit， 如果是 true 则修改为 false
+  - 3. 依次设置所有其他评论组件的 IsShowReply 和 IsShowEdit 为 false
     - 这个获取其他评论组件的地方就有坑，之前的代码里面用的是 `document.querySelectAll` 然后用 `__vue__` 这种比较 hack 的方法来查询其他的组件
     - 这里问题其实很多，一个是修改状态，还依赖了 dom，非常不优雅
-  4. 修改自己的 IsShowReply 为 true
+  - 4. 修改自己的 IsShowReply 为 true
 
 <div class="mt-2"></div>
 
@@ -476,6 +483,9 @@ layout: full
 
 那就需要 TypeScript 的模板字符串类型来帮助你了
 
+<div>
+
+
 ```ts {monaco}
 type CommentId = number;
 type ActiveCommentStatus = `${'Edit' | 'Reply'}${CommentId}` | 'Close';
@@ -486,7 +496,10 @@ activeComment = 'Close'; // ok
 
 activeComment = 'Editttt'; // error
 activeComment = 'Edit22a'; // error
+
 ```
+
+</div>
 
 ---
 
@@ -612,7 +625,7 @@ const count = useObservable(
   interval(1000) // 创建一个定时器 Observable，每秒发出一个值
 )
 
-watch(count, (val)=> console.log(val)) // 每秒触发一次，val 是当前毫秒数
+watch(count, (val) => console.log(val)) // 每秒触发一次，val 是当前毫秒数
 ```
 
 ---
@@ -659,7 +672,7 @@ layout: full
 layout: full
 ---
 
-# 管道设计
+### 管道设计
 
 - 1. **merge** - 合并本地消息与 WebSocket 消息
 - 2. **filter** - 过滤掉不支持的 action 和 msgType 的消息
@@ -876,3 +889,9 @@ layout: full
 - 代码量也非常少，大概在 200 行左右，而且非常容易理解
   - 逻辑代码都在管道里面执行，而且每个操作符各司其职，从上到下依次执行，没有混在一起
   - 这也是函数式编程以及 RxJS 最大的优点，不会修改已有变量，只会返回新值
+
+---
+layout: center
+---
+
+# Thank you
