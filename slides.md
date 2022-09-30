@@ -8,7 +8,7 @@ class: 'text-center'
 # https://sli.dev/custom/highlighters.html
 highlighter: shiki
 # show line numbers in code blocks
-lineNumbers: false
+lineNumbers: true
 
 drawings:
   persist: false
@@ -438,7 +438,7 @@ layout: full
 ```ts
 type CommentId = number;
 type ActiveCommentStatus = `${'Edit' | 'Reply'}${CommentId}` | 'Close';
-const activeComment = ref<ActiveCommentStatus>('Close');
+let activeComment: ActiveCommentStatus = 'Close';
 ```
 
 - 除了 'Close' 外，由 2 部分组成
@@ -479,5 +479,400 @@ layout: full
 ```ts {monaco}
 type CommentId = number;
 type ActiveCommentStatus = `${'Edit' | 'Reply'}${CommentId}` | 'Close';
+let activeComment: ActiveCommentStatus = 'Close';
+activeComment = 'Edit123'; // ok
+activeComment = 'Reply123'; // ok
+activeComment = 'Close'; // ok
+
+activeComment = 'Editttt'; // error
+activeComment = 'Edit22a'; // error
+```
+
+---
+
+# 使用 **RxJS** 简化 WebSocket 的使用
+
+---
+layout: full
+---
+
+# 概念 Observable
+
+- 一个可观察对象，是一个未来会发出值或者事件的集合
+
+```js
+var button = document.querySelector('button');
+Rx.Observable.fromEvent(button, 'click')
+  .subscribe(() => console.log('Clicked!')); // 每次触发 click 事件，都会执行这个回调
+```
+
+- 可以简单的理解成一个事件源，在特定情况下会发出一些值
+- 在我们的例子中，就是 WebSocket 源源不断传过来的消息的集合。
+
+- 可以转换为计算属性
+	- 对外表现都一样，都是一个在未来可能发送改变的值
+	-	计算属性使用 watch 来监听
+	-	Observable 使用 subscribe 来监听
+
+---
+layout: full
+---
+
+# 概念 Subject 
+
+- 一种特殊的 Observable，在我们项目里面可以理解成可以手动触发事件的 Observable。
+- 可以转换成 ref
+  - 如果把最后一个触发的事件当做最新的值，那和 ref 就一模一样了，都是一个变量
+
+```js
+const subject = new Subject();
+
+subject.subscribe({
+  next: (v) => console.log('observerA: ' + v)
+});
+subject.subscribe({
+  next: (v) => console.log('observerB: ' + v)
+});
+
+subject.next(1);
+subject.next(2);
+```
+
+- 输出
 
 ```
+observerA: 1
+observerB: 1
+observerA: 2
+observerB: 2
+```
+
+---
+layout: full
+---
+
+# 概念 Operator 
+
+### Operator 操作符 
+
+- 操作符是 Observable 类型上的方法
+- 是用来组合 Observable 的基本单元，是 RxJS 函数式编程的基础，是 RxJS 的核心
+  - 顺便说一句，VueUse 很多响应式相关的 api 都是抄的 RxJS 的
+- 操作符是惰性求值，每个操作符都返回新的 Observable，只有最后调用 subscribe 才会真正执行
+
+### Pipe 管道
+
+- 管道由多个操作符组成
+
+```js
+const observer = from([1, 2, 3, 4, 5, 6, 7, 8]); // 创建一个连续发出 1-8 的 Observable
+
+observer.pipe(
+  filter(x => x % 2 === 0), // 筛选出偶数
+  map(x => x + 1), // 每个值加 1
+  skip(1) // 跳过第一个值
+).subscribe({
+  next: (v) => console.log(v)
+});
+
+```
+
+- 输出
+
+```
+5 7 9
+```
+---
+layout: full
+---
+
+# RxJS 与 Vue 交互
+
+可以使用 VueUse 的 RxJS 模块，这里介绍 2 个比较常用的
+
+#### from 
+
+把 `Ref<T>` 转换成 `Observable<T>`
+
+```ts
+const count = ref(0)
+from(count).subscribe({
+  next: (v) => console.log(v)
+}) 
+count.value++;
+// 输出 1
+
+```
+
+#### useObservable
+从 `Observable<T>` 转成 `Readonly<Ref<T>>`
+
+```ts
+const count = useObservable(
+  interval(1000) // 创建一个定时器 Observable，每秒发出一个值
+)
+
+watch(count, (val)=> console.log(val)) // 每秒触发一次，val 是当前毫秒数
+```
+
+---
+layout: full
+---
+
+# 例子 评论 WebSocket 处理
+
+### 需求
+
+- 1. 评论列表实时更新
+- 2. 能接收 WebSocket 的消息，也需要从本地操作中更新数据
+  - 就是说 WebSocket 失效的情况下，也不影响本地操作
+- 3. 初始的评论是从接口获取的， WebSocket 只会推送更新数据
+
+---
+layout: full
+---
+
+### 整体设计
+- 将本地的操作也当作一种消息，每次操作完后生成就一条 WebSocket 格式的消息，存入本地消息队列中
+- 将 WebSocket 消息和本地消息合并
+- 过滤掉重复、无效的消息，并 **归并** (reduce) 成一个所有消息的数组
+- 将消息数组与接口数据转换成最终的评论列表
+  - 这里的转换是一个 **reduce** 操作，这一步是**没有副作用**的，所以可以放在 computed 中
+  - 没有副作用的意思是，不会修改原始数据，只会生成新的数据
+  - 接口数据是**原始状态**(State)，消息是**操作**(Commit)，计算结果就只需要把 Commit 依次应用到 State 上就可以了
+  - 其实就有限状态机，Redux、Vuex 的设计思路也是如此，也就是函数式编程的思想
+
+#
+
+### 消息源
+
+- WebSocket 消息的 Observable
+- 本地消息的 Subject
+- 接口获取到的评论数组，其实原始数组和消息部分关系不大，最后计算所有评论的时候加上就行
+
+#
+### 输出
+
+- 实时更新的评论列表
+
+---
+layout: full
+---
+
+# 管道设计
+
+- 1. **merge** - 合并本地消息与 WebSocket 消息
+- 2. **filter** - 过滤掉不支持的 action 和 msgType 的消息
+- 3. **filter** - 过滤掉不属于当前 Issue 的消息
+- 4. **distinctUntilChanged** - 过滤 Id 相同的非更新消息。因为创建、回复、删除操作都只需要一条消息就行了
+- 5. **map** - 做一些转换处理，主要是数据兼容问题，回复接口和 WebSocket 的数据结构有细微的差别
+- 6. **reduce** - 将消息归并成一个数组，这里面也有一个去重逻辑，如果是更新消息，那么会取时间最新的那条
+
+---
+layout: full
+---
+
+#### 消息部分
+
+<div class="overflow-y-auto">
+
+
+```ts
+const localMessages = new Subject<IssueCommentWSMessageResponse>();
+const receiveCommentMessages = useObservable( // 把 SwitchMap 转换成的 Observable 转换成一个 Readonly<Ref>
+  // combineLatest 是组合 2 个 Observable，当任意一个 Observable 发出值时，就会触发回调
+  // actionStore.action 是一个 Ref，每次打开详情弹框都会变
+  // commentRefreshFlag 是一个 Ref，手动刷新评论列表时会变
+  combineLatest([from(actionStore.action), from(commentRefreshFlag)]).pipe( 
+    switchMap(([action, flag]) => { // switchMap 用于将 combineLatest 的 Observable，转换为另外一个 Observable
+      if (action?.type === 'Edit' && !isVisitor.value) { // 如果是编辑操作才会有评论
+        return socket
+          // 将 global:comment 事件转换为 Observable，这和 button 的 click 事件是一样的
+          .on$<IssueCommentWSMessageResponse>('global:comment') 
+          // 消息处理管道开始
+          .pipe(
+            mergeWith(localMessages.asObservable()), // 第1步 合并 WebSocket 消息和本地消息
+            filter((msg) => { // 第2步 过滤掉不支持的 action 和 msgType 的消息
+              return !!(
+                msg?.result &&
+                ['Issue.comment'].includes(msg.msgType) &&
+                ['reply', 'add', 'update', 'delete'].includes(msg.action)
+              );
+            }),
+            filter((msg) => { // 第3步 过滤掉不属于当前 Issue 的消息
+              return (
+                msg.action === 'delete' || // 删除消息没有 linkId
+                msg.result.linkId === action.issueId
+              );
+            }),
+            distinctUntilChanged((a, b) => { // 第4步 过滤 Id 相同的非更新消息
+              if (a.action === 'update' || b.action === 'update') {
+                return false; 
+              }
+              if (a.action === b.action) {
+                return a.result.commentId === b.result.commentId;
+              }
+              return false;
+            }),
+            map((res) => { // 第5步 做一些转换处理
+              // ... 一些数据转换逻辑
+              return res; 
+            }),
+            scan((acc, res) => { // 第6步 将消息归并成一个数组
+              if (['reply', 'add', 'delete'].includes(res.action)) {
+                const index = acc.findIndex(
+                  (c) =>
+                    res.result.commentId === c.result.commentId &&
+                    res.action === c.action
+                );
+                if (index !== -1) {
+                  // 如果是更新消息，那么会取时间最新的那条
+                  if (res.result.updateTime > acc[index].result.updateTime) {
+                    acc[index] = res;
+                  }
+                  return acc;
+                }
+              }
+
+              acc.push(res);
+              return acc;
+            }, [] as IssueCommentWSMessageResponse[]),
+            // 为了保证第一次有值，所以这里加了一个 startWith。
+            // 如果没有 startWith，则刚进页面的时候，没有本地和 WS 消息，那这个 Observable 就不会发出值，下面的计算属性就不会重新计算
+            startWith([] as IssueCommentWSMessageResponse[]) 
+          );
+      }
+      return of([]); // 如果不是编辑操作，那么就返回空数组
+    })
+  ),
+  {
+    initialValue: [] as IssueCommentWSMessageResponse[]
+  }
+);
+
+```
+
+</div>
+
+---
+layout: full
+---
+
+#### 组合部分
+
+<div class="overflow-y-auto">
+
+
+```ts
+const compositionComments = computed(() => {
+  const addedComments = receiveCommentMessages.value  // 所有的新增评论
+    .filter((msg) => msg.action === 'add')
+    .map((msg) => msg.result);
+
+  const addedReplies = receiveCommentMessages.value  // 所有的新增回复
+    .filter((msg) => msg.action === 'reply')
+    .map((msg) => msg.result as unknown as IssueCommentReply);
+
+  const deleteComment = receiveCommentMessages.value // 所有的需要删除的评论、回复
+    .filter((msg) => msg.action === 'delete')
+    .map((msg) => msg.result.commentId);
+
+  // 所有的需要更新的评论、回复的 Map。key 是 commentId，value 是最新的评论
+  const modifiedCommentMap = receiveCommentMessages.value.reduce(
+    (map, msg) => {
+      if (msg.action === 'update') {
+        map.set(msg.result.commentId, msg.result);
+      }
+      return map;
+    },
+    new Map<number, CommentIssue>()
+  );
+
+  return orderBy( // 排序功能
+    // 这里可以得到所有的评论（包括需要删除的），开始执行归并操作
+    [...addedComments, ...(originCommentResponse.value?.list || [])]
+      .reduce((arr, comment) => {
+        // 如果有需要更新的评论，那么就用最新的评论替换掉旧的评论
+        const modifiedComment =
+          modifiedCommentMap.get(comment.commentId) || comment;
+
+        // 这里是获取该评论的所有回复（包括需要更新、删除的），排序的目的是为了保证回复的回复在回复的后面
+        const allReplies = orderBy(
+          addedReplies,
+          (r) => r.updateTime,
+          'asc'
+        ).reduce((arr, reply) => {
+          if (
+            reply.replyId === comment.commentId ||
+            arr.some((r) => r.commentId === reply.replyId)
+          ) {
+            arr.push(reply);
+          }
+          return arr;
+        }, clone(comment.subReplies)); // 原始的回复
+
+        // 获取处理完更新后的所有回复，这里逻辑和评论一样
+        const subReplies = orderBy(
+          allReplies.reduce((subArr, subComment) => {
+            const modifiedSubComment =
+              modifiedCommentMap.get(subComment.commentId) || subComment;
+            if (modifiedSubComment) {
+              subArr.push({
+                ...modifiedSubComment
+              } as IssueCommentReply);
+            }
+            return subArr;
+          }, [] as IssueCommentReply[]),
+          'createTime',
+          'asc'
+        );
+
+        // 如果评论在需要删除的列表里，那么讲 deleteFlag 设置成 1
+        if (deleteComment.includes(modifiedComment.commentId)) {
+          modifiedComment.deleteFlag = 1;
+        }
+
+        // 回复也要判断删除
+        subReplies.forEach((reply) => {
+          if (deleteComment.includes(reply.commentId)) {
+            reply.deleteFlag = 1;
+          }
+        });
+
+        // 将修改后的评论和回复放到数组里
+        arr.push({
+          ...modifiedComment,
+          subReplies: subReplies.filter(
+            (reply) =>
+              reply.deleteFlag === 0 ||
+              subReplies.some((r) => r.replyId === reply.commentId)
+          )
+        });
+        return arr;
+      }, [] as CommentIssue[])
+      .filter(
+        // 如果评论的 deleteFlag 是 1，而且没有回复，那么就过滤掉该评论
+        (comment) => comment.deleteFlag === 0 || comment.subReplies.length
+      ),
+    'createTime',
+    order.value
+  );
+});
+
+```
+
+</div>
+
+---
+layout: full
+---
+
+# 总结
+
+- 首先大家可以自己想一下，如果自己做这个功能，会怎么做？代码量会是多少？
+- 我认为这也算是一个比较复杂的功能
+- 使用 RxJS 后，代码中的状态非常少，可以说只有本地消息列表一个状态，如果把本地消息也弄成事件的机制，那么基本上就没状态了。
+- 而且本地消息数组这个只有一种操作，就是往里面添加模拟消息，没有删除、替换的地方，管理非常的简单。
+- 代码量也非常少，大概在 200 行左右，而且非常容易理解
+  - 逻辑代码都在管道里面执行，而且每个操作符各司其职，从上到下依次执行，没有混在一起
+  - 这也是函数式编程以及 RxJS 最大的优点，不会修改已有变量，只会返回新值
