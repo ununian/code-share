@@ -1,6 +1,7 @@
 ---
 # try also 'default' to start simple
 theme: unicorn
+monaco: true
 #colorSchema: 'light'
 
 # random image from a curated Unsplash collection by Anthony
@@ -42,13 +43,13 @@ layout: full
 <div class="grid gap-x-4 grid-cols-3">
 
 PC
-![PC](/assets/%E8%AF%84%E8%AE%BA-web.png)
+![PC](/assets/comment-web.png)
 
 VSCode
-![PC](/assets/%E8%AF%84%E8%AE%BA-vscode.png)
+![PC](/assets/comment-vscode.png)
 
 IDEA
-![PC](/assets/%E8%AF%84%E8%AE%BA-idea.png)
+![PC](/assets/comment-idea.png)
 
 </div>
 
@@ -388,10 +389,10 @@ layout: full
 
 编辑评论
 
-![回复](/assets/%E8%AF%84%E8%AE%BA-%E5%9B%9E%E5%A4%8D.png)
+![回复](/assets/comment-reply.png)
 
 
-![编辑](/assets/%E8%AF%84%E8%AE%BA-%E7%BC%96%E8%BE%91.png)
+![编辑](/assets/comment-edit.png)
 
 </div>
 
