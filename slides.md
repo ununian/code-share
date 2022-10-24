@@ -306,10 +306,17 @@ layout: full
 ---
 
 ## 说在前面
-- 我认为衡量一段代码复杂度的标准就是看状态的数量
-- 状态越少，代码越简单。状态数量越多，代码越复杂，越容易出错
+- 下面的这些内容是我自己总结出来的一套用来优化代码的理论工具，可能和书本上的原有的概念的不太一样
 
-- 在 Vue 组件内部
+<br/>
+
+- 衡量一段代码复杂度的方法就是看状态的数量
+- 状态越少，逻辑、代码就越简单。状态数量越多，逻辑、代码就越复杂，越容易出错
+- 我认为的好代码就是：在完成业务需求的情况下，**尽量减少状态的数量（大小）**
+
+<br/>
+
+- 什么是状态呢？在 Vue 的场景下
   - 可以简单的认为 data 里面的变量就是状态，props、计算属性都**不是状态**
   - Composition Api 中 ref 和 reactive 是状态，而 computed 都**不是状态**
   - 接口数据可以理解成异步的计算属性
@@ -320,7 +327,7 @@ layout: full
 
 ## 概念
 
-- **状态** 可以由系统内部的行为更改的数据
+- **状态** 可以由**系统内部**的行为更改的数据
 - **状态大小** 状态所有可能的值的集合的大小，记作 size(State)
 - **代码的复杂度** = States.reduce((acc, cur) => acc * size(cur), 1)
 
@@ -333,7 +340,10 @@ layout: full
   - 首选我们明确一点，我们只关心状态在业务逻辑中的意义，而不是他的具体值，只区分可以影响到业务逻辑的状态值就行
   - 一个接口返回的数据是一个数字，但是我们只关心这个数字是正数还是负数，那么这个数字的状态大小就是 2
   - 例如一个数字输入组件值，最大值是10，超过 10 需要报错。那这个 Number 就是 2 种状态，小于等于10和大于10，至于具体是多少，屏幕显示的是多少，对于业务来说意义不是特别大
-  - Issue详情的 Action 有 3 种状态，Create Edit Preview，虽然数据类型是 String，所以 action 的大小是 3。这也就是复合类型种的枚举类型
+
+<br/>
+
+那复合类型的状态大小怎么计算呢？
 
 ---
 layout: full
@@ -402,19 +412,19 @@ layout: full
 
 ## 优化前的做法
 
-- 为回复组件定义两个变量 IsShowReply 和 IsShowEdit，然后通过 v-if 来控制是不是显示编辑器
-- 当点击按钮的时候，以点回复为例
+- 为回复组件定义两个布尔变量 IsShowReply 和 IsShowEdit，然后通过 v-if 来控制是不是显示编辑器
+- 当点击回复按钮的时候，逻辑如下
   - 1. 判断自己的 IsShowReply 是否为 true，如果是就直接返回不做处理
-  - 2. 判断自己的 IsShowEdit， 如果是 true 则修改为 false
+  - 2. 判断自己的 IsShowEdit， 如果是 true 则修改为 false，关掉编辑评论
   - 3. 依次设置所有其他评论组件的 IsShowReply 和 IsShowEdit 为 false
     - 这个获取其他评论组件的地方就有坑，之前的代码里面用的是 `document.querySelectAll` 然后用 `__vue__` 这种比较 hack 的方法来查询其他的组件
-    - 这里问题其实很多，一个是修改状态，还依赖了 dom，非常不优雅
+    - 这里问题其实很多，一个是修改状态，还依赖了 dom，非常不优雅，如果对评论组件做改动，会有很多隐藏的坑，例如修改评论组件的 `class`，那就会导致找不到组件 
   - 4. 修改自己的 IsShowReply 为 true
 
 <div class="mt-2"></div>
 
 
-#### 那这种写法，在评论组件有10个的情况下，状态数量会是多少呢？
+#### 那这种写法，在评论组件有10个的情况下，那代码复杂度是多少呢？
 
 <div v-click>
 
@@ -441,36 +451,36 @@ layout: full
 
 ## 优化后的做法
 
-- 在 store 中定义一个变量 activeComment，用来表示当前活动的评论组件及其类型。
+- 在 store 中定义一个字符串变量 activeCommentEditor，用来表示当前活动的评论组件及其类型。
 
 ```ts
 type CommentId = number;
-type ActiveCommentStatus = `${'Edit' | 'Reply'}${CommentId}` | 'Close';
-let activeComment: ActiveCommentStatus = 'Close';
+type ActiveCommentStatus = `${'Edit' | 'Reply'}${CommentId}` | 'Close'; // TS 的模板字符串类型
+let activeCommentEditor: ActiveCommentStatus = 'Close';
 ```
 
 - 除了 'Close' 外，由 2 部分组成
   - 第一部分是说明当前是 编辑 还是 回复
   - 第二部分是评论的 id
-- 在组件使用时 v-if="currentEditComment === `Edit${id}`" 和 v-if="currentEditComment === `Reply${id}`" 
+- 在组件使用时 v-if="activeCommentEditor === `Edit${id}`" 和 v-if="activeCommentEditor === `Reply${id}`" 
 - 那按钮的回调函数要怎么写呢？
 
 <v-clicks>
 
-  - 以点回复为例，设置 currentEditComment = `Reply${id}`
+  - 例如点击回复，只需要设置 activeCommentEditor = `Reply${id}`
   - over，就这么简单，没有判断，没有dom，没有其他组件
 
 </v-clicks>
 
 <v-click>
 
-#### 那这种写法，在评论组件有10个的情况下，状态数量会是多少呢？
+#### 那这种写法，在评论组件有10个的情况下，代码复杂度是多少呢？
 
-这里 id 虽然是 number，但是对于前端来说就是一个常量，只可能有一种状态
+这里 id 虽然是 number，但是对于前端来说就是一个常量，所以大小为 1
 
-`size(total) = size('Reply' | 'Edit') * count(Comment) + size('Close') = 2 * 10 + 1 = 21`
+`size(total) = size('Reply' | 'Edit') * count(Comment) * 1 + size('Close') = 2 * 10 * 1 + 1 = 21`
 
-> - 在实际使用中，我们发现确实有 21 种状态。然后在代码层面，我们也精准的控制了只可能存在这21种状态。所以要出错也不大可能。
+> - 在实际使用中，我们发现确实有 21 种状态。然后在代码层面，我们也精准的控制了这个值只能在这 21 种正确的状态种。所以要出错也不大可能。
 
 </v-click>
 
@@ -515,7 +525,7 @@ layout: full
 - 一个可观察对象，是一个未来会发出值或者事件的集合
 
 ```js
-var button = document.querySelector('button');
+const button = document.querySelector('button');
 Rx.Observable.fromEvent(button, 'click')
   .subscribe(() => console.log('Clicked!')); // 每次触发 click 事件，都会执行这个回调
 ```
@@ -536,7 +546,7 @@ layout: full
 
 - 一种特殊的 Observable，在我们项目里面可以理解成可以手动触发事件的 Observable。
 - 可以转换成 ref
-  - 如果把最后一个触发的事件当做最新的值，那和 ref 就一模一样了，都是一个变量
+  - 如果把最后一个触发的值当做最新的值，那和 ref 就一模一样了，都是一个变量
 
 ```js
 const subject = new Subject();
@@ -576,7 +586,7 @@ layout: full
 
 ### Pipe 管道
 
-- 管道由多个操作符组成
+- 管道由一个或者多个操作符组成
 
 ```js
 const observer = from([1, 2, 3, 4, 5, 6, 7, 8]); // 创建一个连续发出 1-8 的 Observable
@@ -596,6 +606,41 @@ observer.pipe(
 ```
 5 7 9
 ```
+---
+layout: full
+---
+
+# 简单的例子
+
+需求：有 2 个按钮，Add 和 Reset，点 Add 的时候，值加 1，点 Reset 的时候，值重置为 0
+
+
+```js
+const add = document.querySelector('#add');
+const reset = document.querySelector('#reset');
+const value = document.querySelector('#value');
+
+fromEvent(reset, 'click').pipe(
+  startWith(0),
+  switchMap(() =>
+    fromEvent(add, 'click').pipe(
+      scan((acc) => acc + 1, 0),
+      startWith(0),
+    )
+  )
+)
+.subscribe((v) => {
+  label.innerText = v.toString();
+});
+
+```
+
+<RxJSDemo />
+
+- 这里只是一个简单的例子，在不使用 Vue 的情况下，使用 RxJS 来实现响应式。
+- 这里面也没用用任何状态，所以基本上也杜绝了出错的可能。
+
+
 ---
 layout: full
 ---
@@ -662,7 +707,7 @@ layout: full
 
 - WebSocket 消息的 Observable
 - 本地消息的 Subject
-- 接口获取到的评论数组，其实原始数组和消息部分关系不大，最后计算所有评论的时候加上就行
+- 接口获取到的评论数组
 
 #
 ### 输出
@@ -682,6 +727,10 @@ layout: full
 - 5. **map** - 做一些转换处理，主要是数据兼容问题，回复接口和 WebSocket 的数据结构有细微的差别
 - 6. **reduce** - 将消息归并成一个数组，这里面也有一个去重逻辑，如果是更新消息，那么会取时间最新的那条
 
+<br/>
+
+到这里我们就获取到所有的消息了，然和再合接口数据组合一下就行了
+
 ---
 layout: full
 ---
@@ -693,13 +742,14 @@ layout: full
 
 ```ts
 const localMessages = new Subject<IssueCommentWSMessageResponse>();
-const receiveCommentMessages = useObservable( // 把 SwitchMap 转换成的 Observable 转换成一个 Readonly<Ref>
+// Observable 转换成一个 Readonly<Ref>
+const receiveCommentMessages = useObservable( 
   // combineLatest 是组合 2 个 Observable，当任意一个 Observable 发出值时，就会触发回调
   // actionStore.action 是一个 Ref，每次打开详情弹框都会变
-  // commentRefreshFlag 是一个 Ref，手动刷新评论列表时会变
+  // commentRefreshFlag 是一个 Ref，手动刷新评论列表时递增
   combineLatest([from(actionStore.action), from(commentRefreshFlag)]).pipe( 
-    switchMap(([action, flag]) => { // switchMap 用于将 combineLatest 的 Observable，转换为另外一个 Observable
-      if (action?.type === 'Edit' && !isVisitor.value) { // 如果是编辑操作才会有评论
+    switchMap(([action, _]) => { // 这里是相当于每次打开详情弹框或者手动刷新评论列表时，就会创建一个新的消息数组
+      if (action?.type === 'Edit' && !isVisitor.value) { // 如果是编辑 Issue 的时候，才会有评论
         return socket
           // 将 global:comment 事件转换为 Observable，这和 button 的 click 事件是一样的
           .on$<IssueCommentWSMessageResponse>('global:comment') 
@@ -728,35 +778,36 @@ const receiveCommentMessages = useObservable( // 把 SwitchMap 转换成的 Obse
               }
               return false;
             }),
-            map((res) => { // 第5步 做一些转换处理
+            map((msg) => { // 第5步 做一些转换处理
               // ... 一些数据转换逻辑
-              return res; 
+              return msg; 
             }),
-            scan((acc, res) => { // 第6步 将消息归并成一个数组
-              if (['reply', 'add', 'delete'].includes(res.action)) {
-                const index = acc.findIndex(
-                  (c) =>
-                    res.result.commentId === c.result.commentId &&
-                    res.action === c.action
+            scan((acc, msg) => { // 第6步 将消息归并成一个数组
+              // 这段主要是去重逻辑，取更新时间最新新消息，
+              // 因为 WS 推送的消息时间会比本地的要晚，所以 WS 推送的消息优先级更高
+              if (['reply', 'add', 'delete'].includes(msg.action)) {
+                const index = acc.findIndex((c) =>
+                    msg.result.commentId === c.result.commentId &&
+                    msg.action === c.action
                 );
+
                 if (index !== -1) {
-                  // 如果是更新消息，那么会取时间最新的那条
-                  if (res.result.updateTime > acc[index].result.updateTime) {
-                    acc[index] = res;
+                  if (msg.result.updateTime > acc[index].result.updateTime) {
+                    acc[index] = msg;
                   }
                   return acc;
                 }
               }
 
-              acc.push(res);
+              acc.push(msg);
               return acc;
             }, [] as IssueCommentWSMessageResponse[]),
             // 为了保证第一次有值，所以这里加了一个 startWith。
-            // 如果没有 startWith，则刚进页面的时候，没有本地和 WS 消息，那这个 Observable 就不会发出值，下面的计算属性就不会重新计算
+            // 如果没有 startWith，则刚进页面的时候，没有本地和 WS 消息，那这个 Observable 就不会发出值，下面的计算属性就不会重新计算，会取上到一个 Issue 的消息
             startWith([] as IssueCommentWSMessageResponse[]) 
           );
       }
-      return of([]); // 如果不是编辑操作，那么就返回空数组
+      return of([]); // 如果不是编辑 Issue，那么就返回空数组
     })
   ),
   {
@@ -886,7 +937,7 @@ layout: full
 - 首先大家可以自己想一下，如果自己做这个功能，会怎么做？代码量会是多少？
 - 我认为这也算是一个比较复杂的功能
 - 使用 RxJS 后，代码中的状态非常少，可以说只有本地消息列表一个状态，如果把本地消息也弄成事件的机制，那么基本上就没状态了。
-- 而且本地消息数组这个只有一种操作，就是往里面添加模拟消息，没有删除、替换的地方，管理非常的简单。
+- 而且本地消息数组这个只有一种操作，就是往里面添加模拟消息，没有删除、替换，管理非常的简单。
 - 代码量也非常少，大概在 200 行左右，而且非常容易理解
   - 逻辑代码都在管道里面执行，而且每个操作符各司其职，从上到下依次执行，没有混在一起
   - 这也是函数式编程以及 RxJS 最大的优点，不会修改已有变量，只会返回新值

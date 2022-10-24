@@ -10,6 +10,9 @@
     "@slidev/cli": "^0.36.5",
     "@slidev/theme-default": "*",
     "@slidev/theme-seriph": "*",
+    "@vueuse/core": "^9.3.1",
+    "@vueuse/rxjs": "^9.3.0",
+    "rxjs": "^7.5.7",
     "slidev-theme-purplin": "^1.1.0",
     "slidev-theme-unicorn": "^1.1.1"
   }
